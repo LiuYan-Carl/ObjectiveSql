@@ -17,18 +17,20 @@
 package com.github.braisdom.objsql;
 
 import com.github.braisdom.objsql.annotations.PrimaryKey;
-import com.github.braisdom.objsql.reflection.PropertyUtils;
-import com.github.braisdom.objsql.transition.ColumnTransitional;
+import com.github.braisdom.objsql.transition.ColumnTransition;
 import com.github.braisdom.objsql.util.ArrayUtil;
-import com.github.braisdom.objsql.util.FunctionWithThrowable;
 import com.github.braisdom.objsql.util.StringUtil;
 
+import java.sql.DatabaseMetaData;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.Objects;
 
+import static com.github.braisdom.objsql.util.FunctionWithThrowable.castFunctionWithThrowable;
+
 /**
  * The persistence default implementation with JavaBean
+ *
  * @param <T>
  */
 public class DefaultPersistence<T> extends AbstractPersistence<T> {
@@ -42,7 +44,7 @@ public class DefaultPersistence<T> extends AbstractPersistence<T> {
     }
 
     @Override
-    public T save(final T dirtyObject, boolean skipValidation) throws SQLException {
+    public T save(final T dirtyObject, final boolean skipValidation) throws SQLException {
         Objects.requireNonNull(dirtyObject, "The dirtyObject cannot be null");
 
         Object primaryValue = domainModelDescriptor.getPrimaryValue(dirtyObject);
@@ -53,36 +55,31 @@ public class DefaultPersistence<T> extends AbstractPersistence<T> {
     }
 
     @Override
-    public T insert(T dirtyObject, boolean skipValidation) throws SQLException {
+    public T insert(final T dirtyObject, final boolean skipValidation) throws SQLException {
         Objects.requireNonNull(dirtyObject, "The dirtyObject cannot be null");
 
-        if(!skipValidation)
-            Tables.validate(dirtyObject);
+        if (!skipValidation) {
+            Validator.Violation[] violations = Tables.validate(dirtyObject);
+            if (violations.length > 0)
+                throw new ValidationException(violations);
+        }
 
         String dataSourceName = Tables.getDataSourceName(domainModelDescriptor.getDomainModelClass());
         return Databases.execute(dataSourceName, (connection, sqlExecutor) -> {
-            String[] columnNames = domainModelDescriptor.getInsertableColumns();
-            String tableName = domainModelDescriptor.getTableName();
-            String sql = formatInsertSql(tableName, columnNames);
+            DatabaseMetaData metaData = connection.getMetaData();
+            Quoter quoter = Databases.getQuoter();
 
-            Object[] values = Arrays.stream(columnNames)
-                    .map(FunctionWithThrowable.castFunctionWithThrowable(columnName -> {
-                        String fieldName = domainModelDescriptor.getFieldName(columnName);
-                        ColumnTransitional<T> columnTransitional = domainModelDescriptor.getColumnTransition(fieldName);
-                        if (columnTransitional != null) {
-                            return columnTransitional.sinking(
-                                    connection.getMetaData(),
-                                    dirtyObject,
-                                    domainModelDescriptor,
-                                    fieldName,
-                                    PropertyUtils.read(dirtyObject, fieldName));
-                        } else return PropertyUtils.read(dirtyObject, fieldName);
-                    })).toArray(Object[]::new);
+            String tableName = quoter.quoteTableName(metaData, domainModelDescriptor.getTableName());
+            String[] columnNames = domainModelDescriptor.getInsertableColumns();
+            String[] quotedColumnNames = quoter.quoteColumnNames(metaData, columnNames);
+
+            String sql = formatInsertSql(tableName, columnNames, quotedColumnNames);
+            Object[] values = filterValues(metaData, dirtyObject, columnNames);
 
             T domainObject = (T) sqlExecutor.insert(connection, sql, domainModelDescriptor, values);
             Object primaryValue = Tables.getPrimaryValue(domainObject);
 
-            if(primaryValue != null)
+            if (primaryValue != null)
                 Tables.writePrimaryValue(dirtyObject, primaryValue);
 
             return dirtyObject;
@@ -90,79 +87,107 @@ public class DefaultPersistence<T> extends AbstractPersistence<T> {
     }
 
     @Override
-    public int[] insert(T[] dirtyObjects, boolean skipValidation) throws SQLException {
+    public int[] insert(final T[] dirtyObjects, final boolean skipValidation) throws SQLException {
         Objects.requireNonNull(dirtyObjects, "The dirtyObject cannot be null");
 
-        if(!skipValidation)
-            Tables.validate(dirtyObjects);
+        if (!skipValidation) {
+            Validator.Violation[] violations = Tables.validate(dirtyObjects);
+            if (violations.length > 0)
+                throw new ValidationException(violations);
+        }
 
         String dataSourceName = Tables.getDataSourceName(domainModelDescriptor.getDomainModelClass());
         return Databases.execute(dataSourceName, (connection, sqlExecutor) -> {
-            String[] columnNames = domainModelDescriptor.getInsertableColumns();
-            Object[][] values = new Object[dirtyObjects.length][columnNames.length];
+            DatabaseMetaData metaData = connection.getMetaData();
+            Quoter quoter = Databases.getQuoter();
 
+            String tableName = quoter.quoteTableName(metaData, domainModelDescriptor.getTableName());
+            String[] columnNames = domainModelDescriptor.getInsertableColumns();
+            String[] quotedColumnNames = quoter.quoteColumnNames(metaData, columnNames);
+            String sql = formatInsertSql(tableName, columnNames, quotedColumnNames);
+
+            Object[][] values = new Object[dirtyObjects.length][];
             for (int i = 0; i < dirtyObjects.length; i++) {
-                for (int t = 0; t < columnNames.length; t++) {
-                    String fieldName = domainModelDescriptor.getFieldName(columnNames[t]);
-                    ColumnTransitional<T> columnTransitional = domainModelDescriptor.getColumnTransition(fieldName);
-                    if (columnTransitional != null)
-                        values[i][t] = columnTransitional.sinking(connection.getMetaData(),
-                                dirtyObjects[i], domainModelDescriptor, fieldName,
-                                PropertyUtils.read(dirtyObjects[i], fieldName));
-                    else
-                        values[i][t] = PropertyUtils.read(dirtyObjects[i], fieldName);
+                Object[] rowValues = filterValues(metaData, dirtyObjects[i], columnNames);
+                values[i] = new Object[rowValues.length];
+                for (int t = 0; t < rowValues.length; t++) {
+                    values[i][t] = rowValues[t];
                 }
             }
-
-            String tableName = domainModelDescriptor.getTableName();
-            String sql = formatInsertSql(tableName, columnNames);
-
             return sqlExecutor.insert(connection, sql, domainModelDescriptor, values);
         });
     }
 
+    private Object[] filterValues(DatabaseMetaData metaData, T dirtyObject, String[] columnNames) {
+        return Arrays.stream(columnNames)
+                .filter(columnName -> {
+                    String fieldName = domainModelDescriptor.getFieldName(columnName);
+                    return !domainModelDescriptor.hasDefaultValue(fieldName);
+                })
+                .map(castFunctionWithThrowable(columnName -> {
+                    String fieldName = domainModelDescriptor.getFieldName(columnName);
+                    FieldValue fieldValue = domainModelDescriptor.getFieldValue(dirtyObject, fieldName);
+
+                    ColumnTransition<T> columnTransition = domainModelDescriptor
+                            .getColumnTransition(fieldName);
+                    if (columnTransition != null) {
+                        return columnTransition.sinking(metaData, dirtyObject,
+                                domainModelDescriptor, fieldName, fieldValue);
+                    } else return fieldValue;
+                })).toArray(Object[]::new);
+    }
+
     @Override
-    public T update(Object id, T dirtyObject, boolean skipValidation) throws SQLException {
+    public T update(final Object id, final T dirtyObject, final boolean skipValidation) throws SQLException {
         Objects.requireNonNull(id, "The id cannot be null");
         Objects.requireNonNull(dirtyObject, "The dirtyObject cannot be null");
 
-        if(!skipValidation)
-            Tables.validate(dirtyObject);
+        if (!skipValidation) {
+            Validator.Violation[] violations = Tables.validate(dirtyObject);
+            if (violations.length > 0)
+                throw new ValidationException(violations);
+        }
 
         PrimaryKey primaryKey = domainModelDescriptor.getPrimaryKey();
         ensurePrimaryKeyNotNull(primaryKey);
 
+        Quoter quoter = Databases.getQuoter();
         String dataSourceName = Tables.getDataSourceName(domainModelDescriptor.getDomainModelClass());
         return Databases.execute(dataSourceName, (connection, sqlExecutor) -> {
+            DatabaseMetaData metaData = connection.getMetaData();
             String[] rawColumnNames = domainModelDescriptor.getUpdatableColumns();
 
             String[] columnNames = Arrays.stream(rawColumnNames)
                     .filter(rawColumnName -> {
                         if (domainModelDescriptor.skipNullOnUpdate()) {
                             String fieldName = domainModelDescriptor.getFieldName(rawColumnName);
-                            return PropertyUtils.read(dirtyObject, fieldName) != null;
+                            return domainModelDescriptor.getFieldValue(dirtyObject, fieldName) != null;
                         } else return true;
                     }).toArray(String[]::new);
 
             Object[] values = Arrays.stream(columnNames)
-                    .map(FunctionWithThrowable.castFunctionWithThrowable(columnName -> {
+                    .map(castFunctionWithThrowable(columnName -> {
                         String fieldName = domainModelDescriptor.getFieldName(columnName);
-                        ColumnTransitional<T> columnTransitional = domainModelDescriptor.getColumnTransition(fieldName);
-                        if (columnTransitional != null)
-                            return columnTransitional.sinking(connection.getMetaData(), dirtyObject, domainModelDescriptor,
-                                    fieldName, PropertyUtils.read(dirtyObject, fieldName));
-                        else return PropertyUtils.read(dirtyObject, fieldName);
+                        ColumnTransition<T> columnTransition = domainModelDescriptor
+                                .getColumnTransition(fieldName);
+                        FieldValue fieldValue = domainModelDescriptor.getFieldValue(dirtyObject, fieldName);
+                        if (columnTransition != null)
+                            return columnTransition.sinking(connection.getMetaData(), dirtyObject,
+                                    domainModelDescriptor, fieldName, fieldValue);
+                        else return fieldValue;
                     })).toArray(Object[]::new);
 
+            String[] quotedColumnNames = quoter.quoteColumnNames(metaData, columnNames);
             StringBuilder updatesSql = new StringBuilder();
-            Arrays.stream(columnNames).forEach(columnName ->
+            Arrays.stream(quotedColumnNames).forEach(columnName ->
                     updatesSql.append(columnName).append("=").append("?").append(","));
 
             ensureNotBlank(updatesSql.toString(), "updates");
             updatesSql.delete(updatesSql.length() - 1, updatesSql.length());
 
-            String sql = formatUpdateSql(domainModelDescriptor.getTableName(),
-                    updatesSql.toString(), String.format("%s = ?", primaryKey.name()));
+            String tableName = quoter.quoteTableName(connection.getMetaData(), domainModelDescriptor.getTableName());
+            String sql = formatUpdateSql(tableName, updatesSql.toString(), String.format("%s = ?",
+                    quoter.quoteColumnName(metaData, primaryKey.name())));
 
             sqlExecutor.execute(connection, sql, ArrayUtil.appendElement(Object.class, values, id));
 
@@ -178,9 +203,12 @@ public class DefaultPersistence<T> extends AbstractPersistence<T> {
         ensureNotBlank(updates, "updates");
         ensureNotBlank(updates, "predication");
 
+        Quoter quoter = Databases.getQuoter();
         String dataSourceName = Tables.getDataSourceName(domainModelDescriptor.getDomainModelClass());
+
         return Databases.execute(dataSourceName, (connection, sqlExecutor) -> {
-            String sql = formatUpdateSql(domainModelDescriptor.getTableName(), updates, predication);
+            String tableName = quoter.quoteTableName(connection.getMetaData(), domainModelDescriptor.getTableName());
+            String sql = formatUpdateSql(tableName, updates, predication);
             return sqlExecutor.execute(connection, sql);
         });
     }
@@ -190,31 +218,37 @@ public class DefaultPersistence<T> extends AbstractPersistence<T> {
         Objects.requireNonNull(predication, "The criteria cannot be null");
         ensureNotBlank(predication, "predication");
 
+        Quoter quoter = Databases.getQuoter();
         String dataSourceName = Tables.getDataSourceName(domainModelDescriptor.getDomainModelClass());
         return Databases.execute(dataSourceName, (connection, sqlExecutor) -> {
-            String sql = formatDeleteSql(domainModelDescriptor.getTableName(), predication);
+            String tableName = quoter.quoteTableName(connection.getMetaData(), domainModelDescriptor.getTableName());
+            String sql = formatDeleteSql(tableName, predication);
             return sqlExecutor.execute(connection, sql);
         });
     }
 
     @Override
-    public int delete(Object id) throws SQLException {
+    public int delete(final Object id) throws SQLException {
         Objects.requireNonNull(id, "The id cannot be null");
 
         PrimaryKey primaryKey = domainModelDescriptor.getPrimaryKey();
         ensurePrimaryKeyNotNull(primaryKey);
 
+        Quoter quoter = Databases.getQuoter();
         String dataSourceName = Tables.getDataSourceName(domainModelDescriptor.getDomainModelClass());
         return Databases.execute(dataSourceName, (connection, sqlExecutor) -> {
-            Quoter quoter = Databases.getQuoter();
-            String sql = formatDeleteSql(domainModelDescriptor.getTableName(),
-                    String.format("%s = %s", quoter.quoteColumn(primaryKey.name()), quoter.quoteValue(id)));
+            DatabaseMetaData metaData = connection.getMetaData();
+
+            String tableName = quoter.quoteTableName(metaData, domainModelDescriptor.getTableName());
+            String quotedPrimaryName = quoter.quoteColumnName(connection.getMetaData(), primaryKey.name());
+            String sql = formatDeleteSql(tableName, String.format("%s = %s", quotedPrimaryName, quoter.quoteValue(id)));
+
             return sqlExecutor.execute(connection, sql);
         });
     }
 
     @Override
-    public int execute(String sql) throws SQLException {
+    public int execute(final String sql) throws SQLException {
         Objects.requireNonNull(sql, "The sql cannot be null");
 
         String dataSourceName = Tables.getDataSourceName(domainModelDescriptor.getDomainModelClass());
@@ -224,11 +258,13 @@ public class DefaultPersistence<T> extends AbstractPersistence<T> {
 
     private void ensurePrimaryKeyNotNull(PrimaryKey primaryKey) throws PersistenceException {
         if (primaryKey == null)
-            throw new PersistenceException(String.format("The %s has no primary key", domainModelDescriptor.getTableName()));
+            throw new PersistenceException(String.format("The %s has no primary key",
+                    domainModelDescriptor.getTableName()));
     }
 
     private void ensureNotBlank(String string, String name) throws PersistenceException {
         if (StringUtil.isBlank(string))
-            throw new PersistenceException(String.format("Empty %s for %s ", name, domainModelDescriptor.getTableName()));
+            throw new PersistenceException(String.format("Empty %s for %s ", name,
+                    domainModelDescriptor.getTableName()));
     }
 }

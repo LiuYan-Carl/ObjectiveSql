@@ -26,6 +26,7 @@ import com.github.braisdom.objsql.util.WordUtil;
 import javax.validation.ConstraintViolation;
 import javax.validation.Validation;
 import java.lang.reflect.Field;
+import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.*;
 
@@ -129,7 +130,7 @@ public final class Tables {
             Column column = field.getDeclaredAnnotation(Column.class);
 
             if (column != null) {
-                if(!WordUtil.isEmpty(column.name()))
+                if (!WordUtil.isEmpty(column.name()))
                     return column.name();
             }
 
@@ -147,24 +148,13 @@ public final class Tables {
         Tables.validator = validator;
     }
 
-    public static final void validate(Object bean) throws ValidationException {
-        validate(bean, true);
-    }
-
-    public static final Validator.Violation[] validate(Object bean, boolean suppressException) throws ValidationException {
+    public static final Validator.Violation[] validate(Object bean) {
         Validator validator = getValidator();
         Validator.Violation[] violations = validator.validate(bean);
-        if (violations.length > 0 && !suppressException)
-            throw new ValidationException(violations);
-
         return violations;
     }
 
-    public static final void validate(Object[] beans) throws ValidationException {
-        validate(beans, false);
-    }
-
-    public static final Validator.Violation[] validate(Object[] beans, boolean suppressException) throws ValidationException {
+    public static final Validator.Violation[] validate(Object[] beans) {
         Validator validator = getValidator();
         List<Validator.Violation> violationList = new ArrayList<>();
         for (Object bean : beans) {
@@ -172,10 +162,7 @@ public final class Tables {
             if (violations.length > 0)
                 violationList.addAll(Arrays.asList(violations));
         }
-        if (violationList.size() > 0 && !suppressException)
-            throw new ValidationException(violationList.toArray(new Validator.Violation[]{}));
-
-        return violationList.toArray(new Validator.Violation[0]);
+        return violationList.toArray(violationList.toArray(new Validator.Violation[]{}));
     }
 
     public static final <T> List<T> query(Class<T> domainModelClass, String sql, Object... params) throws SQLException {
@@ -194,15 +181,24 @@ public final class Tables {
                 sqlExecutor.execute(connection, sql, params));
     }
 
-    public static final int count(Class<?> domainModelClass, String predicate, Object... params) throws SQLException {
+    public static final Long count(Class<?> domainModelClass, String predicate, Object... params) throws SQLException {
         Query<?> query = Databases.getQueryFactory().createQuery(domainModelClass);
-        String countAlias = "_count";
+        String countAlias = "count_rows";
         List rows = query.select("COUNT(*) AS " + countAlias).where(predicate, params).execute();
 
         if (rows.size() > 0) {
-            Object count = PropertyUtils.getRawAttribute(rows.get(0), countAlias);
-            return count == null ? 0 : (int) count;
-        } else return 0;
+            Map<String, Object> countRowsMap = PropertyUtils.getRawAttributes(rows.get(0));
+            Object count = countRowsMap.get(countRowsMap.keySet().toArray()[0]);
+            if (count == null)
+                return 0L;
+            else if (count instanceof Long)
+                return (Long) count;
+            else if (count instanceof Integer)
+                return Long.valueOf((Integer) count);
+            else if(count instanceof BigDecimal)
+                return ((BigDecimal)count).longValue();
+            else return 0L;
+        } else return 0L;
     }
 
     public static final String encodeDefaultKey(String name) {

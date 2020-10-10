@@ -221,6 +221,19 @@ public final class PropertyUtils {
         }
     }
 
+    public static Map<String, Object> getRawAttributes(Object bean) {
+        try {
+            Method method = bean.getClass().getMethod("getRawAttributes");
+            return (Map<String, Object>) method.invoke(bean);
+        } catch (NoSuchMethodException ex) {
+            throw new ReflectionException(ex.getMessage(), ex);
+        } catch (IllegalAccessException ex) {
+            throw new ReflectionException(ex.getMessage(), ex);
+        } catch (InvocationTargetException ex) {
+            throw new ReflectionException(ex.getMessage(), ex);
+        }
+    }
+
     public static boolean supportRawAttribute(Object bean) {
         try {
             Method method = bean.getClass().getMethod("setRawAttribute", String.class, Object.class);
@@ -294,14 +307,6 @@ public final class PropertyUtils {
 
     public static String getQualifiedPropertyName(Class<?> type, String name) {
         return type.getSimpleName() + "." + name;
-    }
-
-    static String getQualifiedPropertyName(Object bean, Field field) {
-        return getQualifiedPropertyName(bean, field.getName());
-    }
-
-    private static String getQualifiedPropertyName(Object bean, String name) {
-        return getQualifiedPropertyName(ClassUtils.getRealClass(bean), name);
     }
 
     public static boolean isCollectionType(PropertyDescriptor propertyDescriptor) {

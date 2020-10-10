@@ -16,12 +16,13 @@
  */
 package com.github.braisdom.objsql.annotations;
 
-import com.github.braisdom.objsql.transition.ColumnTransitional;
+import com.github.braisdom.objsql.transition.ColumnTransition;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.sql.JDBCType;
 
 /**
  * The annotation is used for mapping the column and field of Java Bean.
@@ -41,9 +42,9 @@ public @interface Column {
      * Customize a column transition for the column.
      *
      * @return
-     * @see ColumnTransitional
+     * @see ColumnTransition
      */
-    Class<? extends ColumnTransitional> transition() default ColumnTransitional.class;
+    Class<? extends ColumnTransition> transition() default ColumnTransition.class;
 
     /**
      * Indicates Whether the field can be inserted.
@@ -60,4 +61,14 @@ public @interface Column {
      * @return
      */
     boolean updatable() default true;
+
+    /**
+     * Returns invariable value for the column, it means that the invariable value
+     * will replace the real value of domain model when inserting or updating.
+     *
+     * @return an invariable value
+     */
+    String defaultValue() default "";
+
+    JDBCType sqlType() default JDBCType.NULL;
 }

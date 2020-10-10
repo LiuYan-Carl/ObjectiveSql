@@ -18,6 +18,8 @@ package com.github.braisdom.objsql;
 
 import com.github.braisdom.objsql.annotations.PrimaryKey;
 
+import java.util.Optional;
+
 /**
  * It describes that a <code>DomainModel</code> can be adapted to ObjectiveSql。
  * The main purpose of the abstraction is that let the non JavaBean can be saved and queried.
@@ -26,7 +28,7 @@ import com.github.braisdom.objsql.annotations.PrimaryKey;
  *
  * @param <T> the domain model class
  */
-public interface DomainModelDescriptor<T> extends TableRowDescriptor<T> {
+public interface DomainModelDescriptor<T> extends TableRowAdapter<T> {
 
     PrimaryKey getPrimaryKey();
 
@@ -45,6 +47,4 @@ public interface DomainModelDescriptor<T> extends TableRowDescriptor<T> {
     String[] getInsertableColumns();
 
     String[] getUpdatableColumns();
-
-    String getColumnName(String fieldName);
 }
