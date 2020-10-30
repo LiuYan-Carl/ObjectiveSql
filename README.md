@@ -1,15 +1,15 @@
-ObjectiveSql’s mission is to provide  the most intuitive and convenient approach to access various databases, without configuration,  without coding relevant to `JDBC`&`ORM`. It is an abstraction and encapsulation of java in relation database domain logic.
+ObjectiveSQL is an ORM framework in Java base on ActiveRecord pattern, which encourages rapid development and clean, codes with the least, and convention over configuration.
 
-ObjectiveSql-based programming is the best practice in `ActiveRecord` pattern in Java, which incorporates both behavior and data and avoids meaningless `Interface` declaration of Java. Thus, ObjectiveSql-based programming will change the way to build an application base on relation database especially in the WEB development.
 
 ### Features
 
-- Defining a domain model, which carries the query and persistence capabilities by itself, no configuration, no no-implementational `Interface`
-- Validating the Java Bean with Jakarta Bean Validation integrated to `ObjectiveSql`
-- Database transactions simply add an `Annotation` to the method
-- Add `Queryable` annotation to field, which can be queried by static method `queryByFieldName`
+- Dynamic code generation with JSR 269 for Java API of database access
+- Full Java API of database access without coding
+- Object-oriented SQL programming for complex SQL in Java
 
-### Defining domain models
+[![](http://img.youtube.com/vi/Domd3uvTMlw/0.jpg)](http://www.youtube.com/watch?v=Domd3uvTMlw "ObjectiveSQL Introduction")
+
+### Defining domain models only
 
 ```java
 @DomainModel
@@ -25,20 +25,11 @@ public class Member {
     @Relation(relationType = RelationType.HAS_MANY)
     private List<Order> orders;
 }
-
-@DomainModel
-public class Order {
-    private String no;
-    private Integer memberId;
-    private Double amount;
-    private Double quantity;
-
-    @Relation(relationType = RelationType.BELONGS_TO)
-    private Member member;
-}
 ```
 
-### Query methods
+### You will have an amazing experience
+
+#### Query&Update methods 
 
 ```java
 Member member = Member.queryByPrimaryKey(11);
@@ -61,42 +52,6 @@ int count = Member.count("id > ?", 10);
 ```
 
 ```java
-...
-```
-
-### Validation methods
-
-```java
-try {
-    Map<String, String> requestObject = ...; // From the POST request of SpringBoot
-    Member rawMember = Member.newInstanceFrom(requestObject, false);
-    newMember.validate(); //Skip the validation
-} catch(ValidationException ex) {
-    ...
-}
-```
-
-### Persistence methods
-
-```java
-Member newMember = new Member();
-// To set the field value for "newMember"
-newMember.save(false); //Skip the validation
-// newMember.save(true); // Validating the field value before save
-```
-
-```java
-Map<String, String> requestObject = ...; // From the POST request of SpringBoot
-Member rawMember = Member.newInstanceFrom(requestObject, false);
-newMember.save(false); //Skip the validation
-// newMember.save(true); // Validating the field value before save
-```
-
-```java
-Member.update(1, changedMemberInstance, false);
-```
-
-```java
 Member.destory(1);
 ```
 
@@ -108,12 +63,7 @@ Member.destory("id = ?", 1);
 ...
 ```
 
-### The relation query
-
-```java
-Member member = Member.queryPrimary(1, Member.HAS_MANY_ORDERS);
-List<Order> orders = member.getOrders();
-```
+#### The relation query
 
 ```java
 Member member = Member.queryPrimary(1, Member.HAS_MANY_ORDERS);
@@ -125,27 +75,6 @@ Member member = Member.queryByName("demo", Member.HAS_MANY_ORDERS);
 List<Order> orders = member.getOrders();
 ```
 
-### Transactional
-
-```java
-@DomainModel
-public class Order {
-    private String no;
-    private Integer memberId;
-    private Double amount;
-    private Double quantity;
-
-    @Relation(relationType = RelationType.BELONGS_TO)
-    private Member member;
-
-    @Transactional
-    public static void makeOrder(Order order, OrderLine... orderLines) throws SQLException {
-        Order.create(order, false);
-        OrderLine.create(orderLines, false);
-    }
-}
-```
-
 ### Guides/[中文](http://www.objsql.com/)
 
 If you are using Maven just add the following dependency to your pom.xml:
@@ -154,7 +83,7 @@ If you are using Maven just add the following dependency to your pom.xml:
 <dependency>
     <groupId>com.github.braisdom</groupId>
     <artifactId>objective-sql</artifactId>
-    <version>1.3.4</version>
+    <version>1.3.5</version>
 </dependency>
 ```
 

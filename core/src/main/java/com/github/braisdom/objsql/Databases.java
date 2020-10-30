@@ -39,11 +39,6 @@ public final class Databases {
     private static SQLExecutor sqlExecutor;
 
     /**
-     * The default implementation to rise the column value from database to Java with common way
-     */
-    private static ForcedFieldValueConverter valueConverter = new DefaultForcedFieldValueConverter();
-
-    /**
      * The connectionFacotory is required in ObjectiveSql, it will be injected at application beginning
      */
     private static ConnectionFactory connectionFactory;
@@ -117,27 +112,23 @@ public final class Databases {
     }
 
     public static void installQueryFacotry(QueryFactory queryFactory) {
-        Objects.requireNonNull(sqlExecutor, "The queryFactory cannot be null");
+        Objects.requireNonNull(queryFactory, "The queryFactory cannot be null");
         Databases.queryFactory = queryFactory;
     }
 
     public static void installPersistenceFactory(PersistenceFactory persistenceFactory) {
-        Objects.requireNonNull(sqlExecutor, "The persistenceFactory cannot be null");
+        Objects.requireNonNull(persistenceFactory, "The persistenceFactory cannot be null");
         Databases.persistenceFactory = persistenceFactory;
     }
 
     public static void installLoggerFactory(LoggerFactory loggerFactory) {
-        Objects.requireNonNull(sqlExecutor, "The loggerFactory cannot be null");
+        Objects.requireNonNull(loggerFactory, "The loggerFactory cannot be null");
         Databases.loggerFactory = loggerFactory;
     }
 
     public static void installQuoter(Quoter quoter) {
-        Objects.requireNonNull(sqlExecutor, "The quoter cannot be null");
+        Objects.requireNonNull(quoter, "The quoter cannot be null");
         Databases.quoter = quoter;
-    }
-
-    public static void installValueConverter(ForcedFieldValueConverter valueConverter) {
-        Databases.valueConverter = valueConverter;
     }
 
     public static <R> R executeTransactionally(String dataSourceName, TransactionalExecutor<R> executor) throws SQLException {
@@ -287,10 +278,6 @@ public final class Databases {
             };
         }
         return loggerFactory;
-    }
-
-    public static ForcedFieldValueConverter getValueConverter() {
-        return valueConverter;
     }
 
     public static ConnectionFactory getConnectionFactory() {

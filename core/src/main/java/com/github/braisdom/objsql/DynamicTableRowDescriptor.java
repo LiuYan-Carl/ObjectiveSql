@@ -15,33 +15,23 @@ public class DynamicTableRowDescriptor<T extends DynamicModel> implements TableR
     }
 
     @Override
+    public Class getDomainModelClass() {
+        return clazz;
+    }
+
+    @Override
+    public String getTableName() {
+        return Tables.getTableName(clazz);
+    }
+
+    @Override
     public T newInstance() {
         return ClassUtils.createNewInstance(clazz);
     }
 
     @Override
-    public void setGeneratedKey(Object bean, Object primaryKeyValue) {
-        throw new UnsupportedOperationException("The dynamic model has no primary key");
-    }
-
-    @Override
     public String getFieldName(String columnName) {
         return WordUtil.camelize(columnName, true);
-    }
-
-    @Override
-    public FieldValue getFieldValue(Object bean, String fieldName) {
-        throw new UnsupportedOperationException("Dynamic row descriptor cannot be saved");
-    }
-
-    @Override
-    public Optional<String> getFieldDefaultValue(String fieldName) {
-        return Optional.empty();
-    }
-
-    @Override
-    public boolean hasDefaultValue(String fieldName) {
-        return false;
     }
 
     @Override
@@ -51,17 +41,6 @@ public class DynamicTableRowDescriptor<T extends DynamicModel> implements TableR
         } catch (NoSuchFieldException e) {
             return null;
         }
-    }
-
-    @Override
-    public boolean isTransitable(String fieldName) {
-        return false;
-    }
-
-    @Override
-    public ColumnTransition getColumnTransition(String fieldName) {
-        // The dynamic model need not transit
-        return null;
     }
 
     @Override

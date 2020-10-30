@@ -6,10 +6,12 @@ import com.github.braisdom.objsql.annotations.Queryable;
 import com.github.braisdom.objsql.annotations.Relation;
 import com.github.braisdom.objsql.relation.RelationType;
 
+import java.io.Serializable;
 import java.util.List;
 
 @DomainModel
-public class Member {
+public class Member implements Serializable {
+
     @Queryable
     @Column(updatable = false)
     private String no;
@@ -22,5 +24,4 @@ public class Member {
 
     @Relation(relationType = RelationType.HAS_MANY)
     private List<Order> orders;
-
 }
