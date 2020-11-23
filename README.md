@@ -3,15 +3,46 @@ ObjectiveSQL is an ORM framework in Java base on ActiveRecord pattern, which enc
 
 ### Features
 
-- Dynamic code generation with JSR 269 for Java API of database access
+- Dynamic code generation with [JSR 269](https://jcp.org/en/jsr/detail?id=269) for Java API of database access
 - Full Java API of database access without coding
-- Object-oriented SQL programming for complex SQL in Java
+- Dynamically SQL programming with Java syntax,  and very close to SQL syntax
 
-[![](http://img.youtube.com/vi/Domd3uvTMlw/0.jpg)](http://www.youtube.com/watch?v=Domd3uvTMlw "ObjectiveSQL Introduction")
+### Installation
 
-### Defining domain models only
+#### IntelliJ IDEA plugin installation
+
+Installation step: Preferences/Settings* -> *Plugins* -> *Search with "ObjectiveSql" in market* -> *Install*
+
+#### Maven dependencies installation
+
+```xml
+<!-- In standalone -->
+<dependency>
+    <groupId>com.github.braisdom</groupId>
+    <artifactId>objective-sql</artifactId>
+    <version>1.3.8</version>
+</dependency>
+```
+
+```xml
+<!-- In Spring Boot -->
+<dependency>
+  <groupId>com.github.braisdom</groupId>
+  <artifactId>springboot</artifactId>
+  <version>1.0.0</version>
+</dependency>
+```
+
+### Examples
+
+ObjectiveSQL provides full example for various databases below, You can open it directly with IntelliJ IDEA as a standalone project. In fact, they are not just examples, but also unit tests of ObjectiveSQL in various databases.
+
+[MySQL](https://github.com/braisdom/ObjectiveSql/tree/master/examples/mysql),  [Oracle](https://github.com/braisdom/ObjectiveSql/tree/master/examples/oracle),  [MS SQL Server](https://github.com/braisdom/ObjectiveSql/tree/master/examples/sqlserver),  [SQLite](https://github.com/braisdom/ObjectiveSql/tree/master/examples/sqlite),  [PostgreSQL](https://github.com/braisdom/ObjectiveSql/tree/master/examples/postgres),  [Spring Boot](https://github.com/braisdom/ObjectiveSql/tree/master/examples/springboot-sample)
+
+### Simple SQL programming without coding
 
 ```java
+// You only define a domain model and fill related properties
 @DomainModel
 public class Member {
     private String no;
@@ -27,80 +58,95 @@ public class Member {
 }
 ```
 
-### You will have an amazing experience
-
-#### Query&Update methods 
-
 ```java
-Member member = Member.queryByPrimaryKey(11);
-```
+// You will get behaviors of query, update and delete without coding.
+Member.countAll();
+Member.count("id > ?", 1);
+Member.queryByPrimaryKey(1);
+Member.queryFirst("id = ?", 1);
+Member.query("id > ?", 1);
+Member.queryAll();
 
-```java
-Member member = Member.queryFirst("id = ?", 11);
-```
+Member newMember = new Member()
+        .setNo("100000")
+        .setName("Pamela")
+        .setGender(1)
+        .setMobile("15011112222");
+Member.create(newMember);
 
-```java
-List<Member> members = Member.query("id > ?", 8);
-```
+Member[] members = new Member[]{newMember1, newMember2, newMember3};
+        Member.create(members);
 
-```java
-List<Member> members = Member.queryAll();
-```
+Member.update(1L, newMember);
 
-```java
-int count = Member.count("id > ?", 10);
-```
+Member.destroy(1L);
 
-```java
-Member.destory(1);
-```
+Member.execute(String.format("DELETE FROM %s WHERE name = 'Mary'", Member.TABLE_NAME));
 
-```java
-Member.destory("id = ?", 1);
-```
-
-```java
 ...
 ```
 
-#### The relation query
+```java
+Member.queryAll(Member.HAS_MANY_ORDERS);
+Member.queryPrimary(1, Member.HAS_MANY_ORDERS);
+Member.queryByName("demo", Member.HAS_MANY_ORDERS);
+...
+```
+
+### Complex SQL programming
 
 ```java
-Member member = Member.queryPrimary(1, Member.HAS_MANY_ORDERS);
-List<Order> orders = member.getOrders();
+Order.Table orderTable = Order.asTable();
+Select select = new Select();
+
+select.project(sum(orderTable.amount) / sum(orderTable.quantity) * 100)
+    .from(orderTable)
+    .groupBy(orderTable.productId);
+```
+
+```sql
+SELECT SUM(order.amount) / SUM(order.quantity)  * 100
+      FROM orders AS order GROUP BY order.product_id
 ```
 
 ```java
-Member member = Member.queryByName("demo", Member.HAS_MANY_ORDERS);
-List<Order> orders = member.getOrders();
+Member.Table member = Member.asTable();
+Order.Table order = Order.asTable();
+
+Select select = new Select();
+
+select.from(order, member)
+        .where(order.memberId.eq(member.id));
+select.project(member.no,
+        member.name,
+        member.mobile,
+        countDistinct(order.no).as("order_count"),
+        sum(order.quantity).as("total_quantity"),
+        sum(order.amount).as("total_amount"),
+        min(order.salesAt).as("first_shopping"),
+        max(order.salesAt).as("last_shopping"));
+select.groupBy(member.no, member.name, member.mobile);
 ```
 
-### Guides/[中文](http://www.objsql.com/)
-
-If you are using Maven just add the following dependency to your pom.xml:
-
-```xml
-<dependency>
-    <groupId>com.github.braisdom</groupId>
-    <artifactId>objective-sql</artifactId>
-    <version>1.3.5</version>
-</dependency>
+```sql
+SELECT
+	`T0`.`no` ,
+	`T0`.`name` ,
+	`T0`.`mobile` ,
+	COUNT(DISTINCT `T1`.`no` ) AS `order_count`,
+	SUM(`T1`.`quantity` ) AS `total_quantity`,
+	SUM(`T1`.`amount` ) AS `total_amount`,
+	MIN(`T1`.`sales_at` ) AS `first_shopping`,
+	MAX(`T1`.`sales_at` ) AS `last_shopping`
+FROM `orders` AS `T1`, `members` AS `T0`
+WHERE (`T1`.`member_id` = `T0`.`id` )
+GROUP BY `T0`.`no` , `T0`.`name` , `T0`.`mobile`
 ```
 
-**Installing IntelliJ Plugin**:  *Preferences/Settings* -> *Plugins* -> *Search with "ObjectiveSql" in market* -> *Install*
+> 1) Java syntax very close to SQL syntax
+>
+> 2) SQL program will be changed to logical program, resuable and procedural
 
-- [Naming Conventions](https://github.com/braisdom/ObjectiveSql/wiki/Naming-Conventions)
-- [Generated Methods](https://github.com/braisdom/ObjectiveSql/wiki/Generated-Methods)
-- [DataSource Configuration](https://github.com/braisdom/ObjectiveSql/wiki/DataSource-Configuration)
-- [Validations](https://github.com/braisdom/ObjectiveSql/wiki/Validations)
-- [Transaction Principle](https://github.com/braisdom/ObjectiveSql/wiki/Transaction-Principle)
-- [Data Types between database and Java](https://github.com/braisdom/ObjectiveSql/wiki/Data-Types-between-database-and-Java)
-- [Extension Point](https://github.com/braisdom/ObjectiveSql/wiki/Extension-Point)
-- Extensions
-  - [Caching data into Redis](https://github.com/braisdom/ObjectiveSql/wiki/Caching-data-into-Redis)
-  - [How to save a ProtoBuffer message](https://github.com/braisdom/ObjectiveSql/wiki/How-to-save-a-ProtoBuffer-message)
-  - [How to integrate application Log framework to ObjectiveSql](https://github.com/braisdom/ObjectiveSql/wiki/Integrate-application-Log-framework-to-ObjectiveSql)
-  - [Customizing ColumnTransitional](https://github.com/braisdom/ObjectiveSql/wiki/ColumnTransitional)
-
-
+- [Count order by distinct member, and summary amount and quantity of order](https://github.com/braisdom/ObjectiveSql/blob/master/examples/springboot-sample/src/main/java/com/github/braisdom/objsql/sample/model/Member.java#L41)
+- [Calculate LPLY(Same Period Last Year) and LP(Last Period) of products sales for a while](https://github.com/braisdom/ObjectiveSql/blob/master/examples/springboot-sample/src/main/java/com/github/braisdom/objsql/sample/model/Product.java#L45)
 
